@@ -47,6 +47,9 @@ cfg_if::cfg_if! {
     } else if #[cfg(windows)] {
         #[path = "windows.rs"]
         mod imp;
+    } else if #[cfg(target_os = "wasi")] {
+        #[path = "wasi.rs"]
+        mod imp;
     } else if #[cfg(all(target_family = "wasm", not(target_os = "emscripten")))] {
         #[path = "wasm.rs"]
         mod imp;
@@ -321,6 +324,17 @@ mod tests {
         symlink(src, dst)
     }
 
+    #[cfg(target_os = "wasi")]
+    fn make_symlink_file<P, Q>(src: P, dst: Q) -> io::Result<()>
+    where
+        P: AsRef<Path>,
+        Q: AsRef<Path>,
+    {
+        use std::fs;
+        #[allow(deprecated)]
+        fs::soft_link(src, dst)
+    }
+
     #[cfg(windows)]
     fn make_symlink_file<P, Q>(src: P, dst: Q) -> io::Result<()>
     where
@@ -339,6 +353,17 @@ mod tests {
     {
         use std::os::unix::fs::symlink;
         symlink(src, dst)
+    }
+
+    #[cfg(target_os = "wasi")]
+    fn make_symlink_dir<P, Q>(src: P, dst: Q) -> io::Result<()>
+    where
+        P: AsRef<Path>,
+        Q: AsRef<Path>,
+    {
+        use std::fs;
+        #[allow(deprecated)]
+        fs::soft_link(src, dst)
     }
 
     #[cfg(windows)]
