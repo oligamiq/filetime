@@ -1,0 +1,15 @@
+[target.wasm32-wasip1]
+# runner = [
+#     "wasmtime",
+#     "-C",
+#     "cache=no",
+#     "-W",
+#     "component-model",
+#     "-S",
+#     "preview2",
+#     "-S",
+#     "common",
+# ]
+
+runner = ["wasmtime", "run", "--env", "TMPDIR=./tmp/.", "--dir", ".", "--"]
+# runner = ["wasmer", "run", "--dir", "."]

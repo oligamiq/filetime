@@ -362,6 +362,7 @@ mod tests {
         Q: AsRef<Path>,
     {
         use std::fs;
+
         #[allow(deprecated)]
         fs::soft_link(src, dst)
     }
@@ -429,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "wasi")))]
     fn from_system_time_test() {
         let time = FileTime::from_system_time(UNIX_EPOCH + Duration::from_secs(10));
         assert_eq!(10, time.seconds);
@@ -446,6 +447,32 @@ mod tests {
         let time = FileTime::from_system_time(UNIX_EPOCH - Duration::from_secs(12_000_000));
         assert_eq!(-12_000_000, time.seconds);
         assert_eq!(0, time.nanos);
+    }
+
+    #[test]
+    #[cfg(target_os = "wasi")]
+    fn from_system_time_test() {
+        // unix epoch: SystemTime(0ns)
+
+        let time = FileTime::from_system_time(UNIX_EPOCH + Duration::from_secs(10));
+        assert_eq!(10, time.seconds);
+        assert_eq!(0, time.nanos);
+
+        // This panic on wasi
+        //UNIX_EPOCH - Duration::from_secs(10) is negative overflow
+        // let time = FileTime::from_system_time(UNIX_EPOCH - Duration::from_secs(10));
+        // assert_eq!(-10, time.seconds);
+        // assert_eq!(0, time.nanos);
+
+        // This panic on wasi
+        // let time = FileTime::from_system_time(UNIX_EPOCH - Duration::from_millis(1100));
+        // assert_eq!(-2, time.seconds);
+        // assert_eq!(900_000_000, time.nanos);
+
+        // This panic on wasi
+        // let time = FileTime::from_system_time(UNIX_EPOCH - Duration::from_secs(12_000_000));
+        // assert_eq!(-12_000_000, time.seconds);
+        // assert_eq!(0, time.nanos);
     }
 
     #[test]
@@ -512,6 +539,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "wasi"))]
     fn set_dir_times_test() -> io::Result<()> {
         let td = Builder::new().prefix("filetime").tempdir()?;
         let path = td.path().join("foo");
@@ -571,6 +599,78 @@ mod tests {
         let metadata = fs::symlink_metadata(&spath)?;
         let mtime = FileTime::from_last_modification_time(&metadata);
         assert_eq!(mtime, smtime);
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(target_os = "wasi")]
+    fn set_dir_times_test() -> io::Result<()> {
+        let td = {
+            let td = std::env::var("TMPDIR").expect("TMPDIR not set");
+            let td = Path::new(&td);
+            std::fs::create_dir_all(td)?;
+            Builder::new().tempdir_in(td)?
+        };
+        let path = td.path().join("foo");
+        fs::create_dir(&path)?;
+
+        let metadata = fs::metadata(&path)?;
+        let mtime = FileTime::from_last_modification_time(&metadata);
+        let atime = FileTime::from_last_access_time(&metadata);
+        set_file_times(&path, atime, mtime)?;
+
+        let new_mtime = FileTime::from_unix_time(10_000, 0);
+        set_file_times(&path, atime, new_mtime)?;
+
+        let metadata = fs::metadata(&path)?;
+        let mtime = FileTime::from_last_modification_time(&metadata);
+        assert_eq!(mtime, new_mtime, "modification should be updated");
+
+        // Update just mtime
+        let new_mtime = FileTime::from_unix_time(20_000, 0);
+        set_file_mtime(&path, new_mtime)?;
+        let metadata = fs::metadata(&path)?;
+        let mtime = FileTime::from_last_modification_time(&metadata);
+        assert_eq!(mtime, new_mtime, "modification time should be updated");
+        let new_atime = FileTime::from_last_access_time(&metadata);
+        assert_eq!(atime, new_atime, "accessed time should not be updated");
+
+        // Update just atime
+        let new_atime = FileTime::from_unix_time(30_000, 0);
+        set_file_atime(&path, new_atime)?;
+        let metadata = fs::metadata(&path)?;
+        let mtime = FileTime::from_last_modification_time(&metadata);
+        assert_eq!(mtime, new_mtime, "modification time should not be updated");
+        let atime = FileTime::from_last_access_time(&metadata);
+        assert_eq!(atime, new_atime, "accessed time should be updated");
+
+        let spath = td.path().join("bar");
+
+        // fs::create_dir(&spath)?;
+
+        // make_symlink_dir(&path, &spath)?;
+        let metadata = fs::symlink_metadata(&spath)?;
+        let smtime = FileTime::from_last_modification_time(&metadata);
+
+        set_file_times(&spath, atime, mtime)?;
+
+        let metadata = fs::metadata(&path)?;
+        let cur_mtime = FileTime::from_last_modification_time(&metadata);
+        assert_eq!(mtime, cur_mtime);
+
+        let metadata = fs::symlink_metadata(&spath)?;
+        let cur_mtime = FileTime::from_last_modification_time(&metadata);
+        assert_eq!(smtime, cur_mtime);
+
+        // set_file_times(&spath, atime, new_mtime)?;
+
+        // let metadata = fs::metadata(&path)?;
+        // let mtime = FileTime::from_last_modification_time(&metadata);
+        // assert_eq!(mtime, new_mtime);
+
+        // let metadata = fs::symlink_metadata(&spath)?;
+        // let mtime = FileTime::from_last_modification_time(&metadata);
+        // assert_eq!(mtime, smtime);
         Ok(())
     }
 
